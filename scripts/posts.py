@@ -20,9 +20,10 @@ def to_utc(ts: Optional[float]) -> Optional[str]:
 
 def fix_string(value: str) -> str:
     try:
-        return value.encode("latin1").decode("utf-8")
+        decoded = value.encode("latin1").decode("utf-8")
     except Exception:
-        return value
+        decoded = value
+    return decoded.replace("\u2028", "\n").replace("\u2029", "\n")
 
 
 def fix_mojibake(obj: Any) -> Any:
