@@ -1,0 +1,42 @@
+{
+  "fields": {
+    "timestamp": {
+      "path": "timestamp",
+      "transform": "to_utc"
+    },
+    "title": {
+      "path": "title",
+      "transform": "decode"
+    },
+    "description": {
+      "path": "data[].post",
+      "first": true,
+      "transform": "decode"
+    },
+    "attachments": {
+      "path": "attachments[]",
+      "each": {
+        "cases": [
+          {
+            "when": "data[].media",
+            "emit": {
+              "media.uri": {
+                "path": "data[].media.uri",
+                "transform": "decode"
+              }
+            }
+          },
+          {
+            "when": "data[].external_context.url",
+            "emit": {
+              "external_url": {
+                "path": "data[].external_context.url",
+                "transform": "decode"
+              }
+            }
+          }
+        ]
+      }
+    }
+  }
+}
