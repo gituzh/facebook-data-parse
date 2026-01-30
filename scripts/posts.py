@@ -221,18 +221,20 @@ def main() -> None:
     parser.add_argument(
         "--sort-order",
         choices=["asc", "desc"],
-        default="asc",
-        help="Sort order for --sort-field (default: asc)",
+        default="desc",
+        help="Sort order for --sort-field (default: desc)",
     )
     parser.add_argument(
-        "--collapse-single-branches",
-        action="store_true",
-        help="Collapse single-item lists all the way down",
+        "--no-collapse-single-branches",
+        action="store_false",
+        dest="collapse_single_branches",
+        help="Disable collapsing single-item lists",
     )
     parser.add_argument(
-        "--flatten-dicts",
-        action="store_true",
-        help="Flatten dicts into dotted keys (global)",
+        "--no-flatten-dicts",
+        action="store_false",
+        dest="flatten_dicts",
+        help="Disable flattening dicts into dotted keys",
     )
     args = parser.parse_args()
 
