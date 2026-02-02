@@ -30,6 +30,9 @@ python3 scripts/posts.py \
   --output-dir data/output \
   --sort-field timestamp \
   --sort-order asc \
+  --start 20200101_000000 \
+  --end 20201231_235959 \
+  --split month \
   --collapse-single-branches \
   --flatten-dicts \
   data/input/<facebook-export>/posts/profile_posts_1.json
@@ -39,6 +42,9 @@ python3 scripts/posts.py \
 - `--output-dir`: Where to write the processed JSON.
 - `--sort-field`: Field name to sort by in the processed output.
 - `--sort-order`: `asc` or `desc`.
+- `--start`: Only include posts on or after this time (unix seconds, `YYYYMMDD_HHMMSS`, or ISO-8601).
+- `--end`: Only include posts on or before this time (unix seconds, `YYYYMMDD_HHMMSS`, or ISO-8601).
+- `--split`: Split output by calendar period in UTC: `year`, `quarter`, `month`, `week`.
 - `--collapse-single-branches`: Collapses single-item lists recursively in output.
 - `--flatten-dicts`: Flattens nested dicts into dotted keys.
 
@@ -55,3 +61,5 @@ The mapping supports:
 ## Notes
 - Input JSON must be a list of posts.
 - The script prints the output file path on success.
+- When `--split` is used, the script writes one file per period, named with the
+  min/max timestamps found in that slice (same naming convention as single-file output).

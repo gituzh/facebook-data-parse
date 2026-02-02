@@ -18,6 +18,70 @@ def to_utc(ts: Optional[float]) -> Optional[str]:
         return None
 
 
+def parse_time_arg(value: Optional[str]) -> Optional[float]:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except ValueError:
+        pass
+    try:
+        return datetime.strptime(value, DATETIME_FORMAT).replace(tzinfo=timezone.utc).timestamp()
+    except ValueError:
+        pass
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        raise SystemExit(
+            "Invalid time value. Use unix seconds, YYYYMMDD_HHMMSS, or ISO-8601."
+        )
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed.timestamp()
+
+
+def filter_by_time(data: List[Dict[str, Any]], start_ts: Optional[float], end_ts: Optional[float]) -> List[Dict[str, Any]]:
+    if start_ts is None and end_ts is None:
+        return data
+    filtered: List[Dict[str, Any]] = []
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        ts = item.get("timestamp")
+        if not isinstance(ts, (int, float)):
+            continue
+        if start_ts is not None and ts < start_ts:
+            continue
+        if end_ts is not None and ts > end_ts:
+            continue
+        filtered.append(item)
+    return filtered
+
+
+def split_by_period(data: List[Dict[str, Any]], split: Optional[str]) -> List[List[Dict[str, Any]]]:
+    if not split:
+        return [data]
+    buckets: Dict[Any, List[Dict[str, Any]]] = {}
+    for item in data:
+        if not isinstance(item, dict):
+            continue
+        ts = item.get("timestamp")
+        if not isinstance(ts, (int, float)):
+            continue
+        dt = datetime.fromtimestamp(float(ts), tz=timezone.utc)
+        if split == "year":
+            key = (dt.year,)
+        elif split == "quarter":
+            key = (dt.year, (dt.month - 1) // 3 + 1)
+        elif split == "month":
+            key = (dt.year, dt.month)
+        else:
+            iso_year, iso_week, _ = dt.isocalendar()
+            key = (iso_year, iso_week)
+        buckets.setdefault(key, []).append(item)
+    return [buckets[key] for key in sorted(buckets.keys())]
+
+
 def fix_string(value: str) -> str:
     try:
         decoded = value.encode("latin1").decode("utf-8")
@@ -225,6 +289,19 @@ def main() -> None:
         help="Sort order for --sort-field (default: desc)",
     )
     parser.add_argument(
+        "--start",
+        help="Filter posts on or after this time (unix seconds, YYYYMMDD_HHMMSS, or ISO-8601)",
+    )
+    parser.add_argument(
+        "--end",
+        help="Filter posts on or before this time (unix seconds, YYYYMMDD_HHMMSS, or ISO-8601)",
+    )
+    parser.add_argument(
+        "--split",
+        choices=["year", "quarter", "month", "week"],
+        help="Split output into multiple files by calendar period (UTC)",
+    )
+    parser.add_argument(
         "--no-collapse-single-branches",
         action="store_false",
         dest="collapse_single_branches",
@@ -251,34 +328,45 @@ def main() -> None:
     if not isinstance(data, list):
         raise SystemExit("Input JSON must be a list of posts.")
 
-    timestamps = [item.get("timestamp") for item in data if isinstance(item, dict)]
-    timestamps = [ts for ts in timestamps if isinstance(ts, (int, float))]
+    start_ts = parse_time_arg(args.start)
+    end_ts = parse_time_arg(args.end)
 
-    if timestamps:
-        start = to_utc(min(timestamps)) or "unknown"
-        end = to_utc(max(timestamps)) or "unknown"
-    else:
-        start = "unknown"
-        end = "unknown"
+    filtered = filter_by_time(data, start_ts, end_ts)
+    groups = split_by_period(filtered, args.split)
+    if args.split and not groups:
+        groups = [filtered]
 
-    output_name = f"posts_{start}_{end}.json"
-    output_path = Path(args.output_dir) / output_name
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    for group in groups:
+        timestamps = [item.get("timestamp") for item in group if isinstance(item, dict)]
+        timestamps = [ts for ts in timestamps if isinstance(ts, (int, float))]
 
-    processed = process_posts(data, mapping)
-    if args.collapse_single_branches:
-        processed = [collapse_single_branches(item) for item in processed]
-    if args.flatten_dicts:
-        processed = [flatten_dicts(item) for item in processed]
-    if args.sort_field:
-        sort_key = args.sort_field
-        processed.sort(
-            key=lambda item: (item.get(sort_key) is None, item.get(sort_key)),
-            reverse=args.sort_order == "desc",
-        )
-    with output_path.open("w", encoding="utf-8") as f:
-        json.dump(processed, f, ensure_ascii=False, indent=2)
+        if timestamps:
+            start = to_utc(min(timestamps)) or "unknown"
+            end = to_utc(max(timestamps)) or "unknown"
+        else:
+            start = "unknown"
+            end = "unknown"
 
-    print(str(output_path))
+        output_name = f"posts_{start}_{end}.json"
+        output_path = output_dir / output_name
+
+        processed = process_posts(group, mapping)
+        if args.collapse_single_branches:
+            processed = [collapse_single_branches(item) for item in processed]
+        if args.flatten_dicts:
+            processed = [flatten_dicts(item) for item in processed]
+        if args.sort_field:
+            sort_key = args.sort_field
+            processed.sort(
+                key=lambda item: (item.get(sort_key) is None, item.get(sort_key)),
+                reverse=args.sort_order == "desc",
+            )
+        with output_path.open("w", encoding="utf-8") as f:
+            json.dump(processed, f, ensure_ascii=False, indent=2)
+
+        print(str(output_path))
 
 
 if __name__ == "__main__":
